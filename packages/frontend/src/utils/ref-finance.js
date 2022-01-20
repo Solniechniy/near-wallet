@@ -17,7 +17,7 @@ export const fetchTokenWhiteList = async (accountId) => {
   try {
     const account = wallet.getAccountBasic(accountId);
     const contract = new Contract(account, REF_FINANCE_CONTRACT, {viewMethods: ['get_whitelisted_tokens']});
-    const whiteListedTokens = await contract.get_whitelisted_tokens({"from_index": 0,"limit": 100});
+    const whiteListedTokens = await contract.get_whitelisted_tokens();
 
     return whiteListedTokens;
   } catch (error) {

@@ -72,4 +72,5 @@ module.exports = {
     WHITELISTED_CONTRACTS: parseCommaSeperatedStringAsArrayFromShell(
         process.env.TOKEN_CONTRACTS
     ),
+    NEAR_TOKEN_ID: process.env.NEAR_TOKEN_ID || 'wrap.testnet',
 };

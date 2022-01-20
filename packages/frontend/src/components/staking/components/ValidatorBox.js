@@ -5,8 +5,9 @@ import styled from 'styled-components';
 
 import { Mixpanel } from '../../../mixpanel/index';
 import { redirectTo } from '../../../redux/actions/account';
-import { PROJECT_VALIDATOR_VERSION, ValidatorVersion } from '../../../utils/constants';
+import { FARMING_VALIDATOR_VERSION, ValidatorVersion } from '../../../utils/constants';
 import Balance from '../../common/balance/Balance';
+import FarmingBalanceDisplay from '../../common/balance/farming-balance/FarmingBalanceDisplay';
 import FormButton from '../../common/FormButton';
 import Tooltip from '../../common/Tooltip';
 import ChevronIcon from '../../svg/ChevronIcon';
@@ -128,11 +129,14 @@ export default function ValidatorBox({
     validator,
     amount,
     staking = true,
+    farming = false,
     clickable = true,
     style,
     label = false,
     stakeAction,
     showBalanceInUSD,
+    isNear = true,
+    tokenMeta = {}
 }) {
     const dispatch = useDispatch();
     const { accountId: validatorId, active } = validator;
@@ -156,7 +160,7 @@ export default function ValidatorBox({
             dispatch(redirectTo(`/staking/${validatorId}${stakeAction ? `/${stakeAction}` : ``}`));
         }
     };
-    const isProjectValidator = validator.version === ValidatorVersion[PROJECT_VALIDATOR_VERSION];
+    const isFarmingValidator = validator.version === ValidatorVersion[FARMING_VALIDATOR_VERSION];
     return (
         <Container
             className='validator-box'
@@ -172,12 +176,12 @@ export default function ValidatorBox({
                     <div className='name-container' data-test-id="stakingPageValidatorItemName">
                         {validatorId}
                     </div>
-                    {isProjectValidator && <Tooltip translate='staking.balanceBox.farm.info' />}
+                    {isFarmingValidator && <Tooltip translate='staking.balanceBox.farm.info' />}
                 </div>
                 {typeof fee === 'number' &&
                     <div className="text-left">
                         { 
-                            isProjectValidator && <>
+                            isFarmingValidator && <>
                                 <span>APY&nbsp;</span>
                                 <span>{validator?.calculatedAPY}%&nbsp;-&nbsp;</span>
                             </>
@@ -197,8 +201,12 @@ export default function ValidatorBox({
             {amount &&
                 <div className='right'>
                     {staking && <div><Translate id='staking.validatorBox.staking' /></div>}
+                    {farming && <div><Translate id='staking.validatorBox.farming' /></div>}
                     <div className='amount'>
-                        <Balance amount={amount} showBalanceInUSD={showBalanceInUSD} />
+                        {!isNear 
+                            ? <FarmingBalanceDisplay  amount={amount}  tokenMeta={tokenMeta} />
+                            : <Balance amount={amount} showBalanceInUSD={showBalanceInUSD}/>
+                        }
                     </div>
                 </div>
             }

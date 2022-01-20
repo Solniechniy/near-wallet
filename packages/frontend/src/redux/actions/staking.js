@@ -5,31 +5,20 @@ import { createActions } from 'redux-actions';
 import {
     ACCOUNT_HELPER_URL,
     REACT_APP_USE_TESTINGLOCKUP,
-    STAKING_GAS_BASE,
+    STAKING_GAS_BASE
 } from '../../config';
 import { getLockupAccountId, getLockupMinBalanceForStorage } from '../../utils/account-with-lockup';
 import { showAlert } from '../../utils/alerts';
+import { formatTokenAmount } from '../../utils/amounts';
 import {
-    MAINNET,
-    getValidatorRegExp,
-    getValidationVersion,
-    TESTNET,
-    PROJECT_VALIDATOR_VERSION
+    getValidationVersion, getValidatorRegExp, MAINNET, FARMING_VALIDATOR_VERSION, TESTNET
 } from '../../utils/constants';
 import { setStakingAccountSelected } from '../../utils/localStorage';
+import { fetchTokenPrices, fetchTokenWhiteList } from '../../utils/ref-finance';
 import {
-    STAKING_AMOUNT_DEVIATION,
-    MIN_DISPLAY_YOCTO,
-    ZERO,
-    EXPLORER_DELAY,
-    ACCOUNT_DEFAULTS,
-    getStakingDeposits,
-    lockupMethods,
-    updateStakedBalance,
-    signAndSendTransaction,
-    stakingMethods,
-    shuffle,
-    calculateAPY
+    ACCOUNT_DEFAULTS, calculateAPY, EXPLORER_DELAY, getStakingDeposits,
+    lockupMethods, MIN_DISPLAY_YOCTO, shuffle, signAndSendTransaction,
+    stakingMethods, STAKING_AMOUNT_DEVIATION, updateStakedBalance, ZERO
 } from '../../utils/staking';
 import { wallet } from '../../utils/wallet';
 import { WalletError } from '../../utils/walletError';
@@ -39,19 +28,13 @@ import {
 } from '../slices/account';
 import { selectAllAccountsByAccountId } from '../slices/allAccounts';
 import {
-    selectStakingAccountsMain,
-    selectStakingMainAccountId,
-    selectStakingLockupAccountId,
-    selectStakingAccountsLockup,
-    selectStakingAllValidators,
+    selectStakingAccountsLockup, selectStakingAccountsMain, selectStakingAllValidators,
     selectStakingAllValidatorsLength,
     selectStakingContract,
-    selectStakingCurrentAccountAccountId,
-    selectStakingFindContractByValidatorId,
-    selectStakingLockupId
+    selectStakingCurrentAccountAccountId, selectStakingCurrentAccountbyAccountId, selectStakingFindContractByValidatorId, selectStakingLockupAccountId, selectStakingLockupId, selectStakingMainAccountId
 } from '../slices/staking';
-import { selectStakingCurrentAccountbyAccountId } from '../slices/staking';
 import { getBalance } from './account';
+
 
 const {
     transactions: {
@@ -387,6 +370,7 @@ export const { staking } = createActions({
             ({ accountId, isOwner }) => ({ accountId, isOwner })
         ],
         GET_VALIDATORS: async (accountIds, accountId) => {
+            console.log('GET_VALIDATORS');
             const { current_validators, next_validators, current_proposals } = await wallet.connection.provider.validators();
             const currentValidators = shuffle(current_validators).map(({ account_id }) => account_id);
             if (!accountIds) {
@@ -400,6 +384,7 @@ export const { staking } = createActions({
             }
 
             const currentAccount = wallet.getAccountBasic(accountId);
+            const tokenPrices = await fetchTokenPrices();
 
             return (await Promise.all(
                 accountIds.map(async (account_id) => {
@@ -416,15 +401,15 @@ export const { staking } = createActions({
 
                         validator.version = getValidationVersion(networkId, validator.accountId);
 
-                        if (validator.version === PROJECT_VALIDATOR_VERSION) {
+                        if (validator.version === FARMING_VALIDATOR_VERSION) {
                             try {
                                 const poolSummary = await validator.contract.get_pool_summary();
                                 validator.poolSummary = poolSummary;
+                                const calculatedAPY = await calculateAPY(validator, tokenPrices);
+                                validator.calculatedAPY = calculatedAPY;
                             } catch (e) {
                                 console.log('error', e);
                             }
-                            const calculatedAPY = await calculateAPY(validator);
-                            validator.calculatedAPY = calculatedAPY;
                         }
                         return validator;
                     } catch (e) {
@@ -432,6 +417,15 @@ export const { staking } = createActions({
                     }
                 })
             )).filter((v) => !!v);
+        },
+        SET_CURRENT_VALIDATOR: async (validatorId) => {
+            console.log('SET_CURRENT_VALIDATOR', validatorId);
+            return validatorId;
+            // const validator = selectStakingFindContractByValidatorId(getState(), { validatorId });
+        },
+        CLEAR_CURRENT_VALIDATOR: () => {
+            console.log('CLEAR_CURRENT_VALIDATOR');
+            return null;
         }
     }
 });
@@ -544,4 +538,54 @@ export const updateStaking = (currentAccountId, recentlyStakedValidators) => asy
 export const handleUpdateCurrent = (accountId) => async (dispatch, getState) => {
     let currentAccount = selectStakingCurrentAccountbyAccountId(getState(), { accountId });
     dispatch(staking.updateCurrent({ currentAccount }));
+};
+
+export const selectCurrentValidator = (validatorId, accountId) => async (dispatch, getState) => {
+    const validators = selectStakingAllValidators(getState()) || [];
+    const currentValidator = validators.find(validator => validator?.accountId === validatorId);
+    if (currentValidator?.version === FARMING_VALIDATOR_VERSION) {
+        try {
+            const poolSummary = await currentValidator.contract.get_pool_summary();
+            currentValidator.poolSummary = poolSummary;
+
+            const tokenWhiteList = await fetchTokenWhiteList(accountId) || [];
+            const tokenPrices = await fetchTokenPrices();
+        
+            const calculatedAPY = await calculateAPY(currentValidator, tokenPrices);
+
+            currentValidator.calculatedAPY = calculatedAPY;
+
+            const rewards = await Promise.all(
+                currentValidator.poolSummary.farms.map(async (farm) => {
+                    const rewards =
+                        await currentValidator.contract.get_unclaimed_reward({
+                            account_id: accountId,
+                            farm_id: farm.farm_id,
+                        });
+
+                    const tokenData = tokenPrices[farm.token_id] || { price: 0, symbol: '', decimal: 1};
+
+                    return {
+                        amount: +formatTokenAmount(+rewards, tokenData.decimal, 5),
+                        tokenPrice: (+tokenData.price).toFixed(2) || 0,
+                        tokenId: farm.token_id,
+                        tokenName: tokenData.symbol,
+                        isWhiteListed: tokenWhiteList.includes(farm.token_id),
+                        farmTitle: farm.name,
+                        farmId: farm.farm_id
+                    };
+                })
+            );
+
+            currentValidator.farmRewards = rewards;
+        } catch (e) {
+            console.log('error', e);
+        }
+    }
+
+    dispatch(staking.setCurrentValidator(currentValidator));
+};
+
+export const clearCurrentValidator = () => (dispatch) => {
+    dispatch(staking.clearCurrentValidator());
 };

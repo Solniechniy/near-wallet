@@ -1,10 +1,9 @@
-import BN from 'bn.js';
 import React from 'react';
 import { Translate } from 'react-localize-redux';
 import styled from 'styled-components';
 
 import classNames from '../../../utils/classNames';
-import Balance from '../../common/balance/Balance';
+import FarmingBalanceDisplay from '../../common/balance/farming-balance/FarmingBalanceDisplay';
 import FormButton from '../../common/FormButton';
 import Tooltip from '../../common/Tooltip';
 
@@ -66,7 +65,7 @@ const Container = styled.div`
     }
 `;
 
-export default function BalanceBox({
+export default function FarmingBalanceBox({
     title,
     amount,
     info,
@@ -78,18 +77,26 @@ export default function BalanceBox({
     linkTo,
     buttonTestId,
     balanceTestId,
+    className,
+    tokenMeta: {tokenPrice, tokenId, tokenName, isWhiteListed, farmTitle} = {}
 }) {
 
+    const disableButton = amount == 0 || loading;
     return (
         <Container className='balance-box'>
             <div className='left'>
                 <div className='title'>
-                    <Translate id={title} />
+                    {farmTitle || <Translate id={title} />}
                     <Tooltip translate={info}/>
                 </div>
-                <Balance 
-                    data-test-id={balanceTestId}
-                    amount={amount} />
+                <FarmingBalanceDisplay
+                    amount={amount}
+                    className={className}
+                    showSignUSD
+                    showSymbolUSD
+                    tokenMeta={{tokenPrice, tokenId, tokenName, isWhiteListed, farmTitle}}
+                />
+                
                 {disclaimer &&
                     <div className='withdrawal-disclaimer'>
                         <Translate id={disclaimer} />
@@ -99,7 +106,7 @@ export default function BalanceBox({
             {button && (onClick || linkTo) &&
                 <FormButton
                     data-test-id={buttonTestId}
-                    disabled={new BN(amount).isZero() || loading}
+                    disabled={disableButton || loading}
                     onClick={onClick}
                     linkTo={linkTo}
                     className={classNames(['small', buttonColor])}

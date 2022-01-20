@@ -1307,6 +1307,7 @@
             "fee": "Fee",
             "near": "NEAR",
             "staking": "Staking",
+            "farming": "Farming",
             "state": {
                 "active": "active",
                 "inactive": "inactive"

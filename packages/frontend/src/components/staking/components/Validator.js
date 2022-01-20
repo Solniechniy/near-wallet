@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Translate } from 'react-localize-redux';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 
 import { Mixpanel } from '../../../mixpanel';
 import { redirectTo } from '../../../redux/actions/account';
+import { clearCurrentValidator, selectCurrentValidator } from '../../../redux/actions/staking';
 import { actionsPending } from '../../../utils/alerts';
-import { PROJECT_VALIDATOR_VERSION } from '../../../utils/constants';
-import { fetchTokenPrices, fetchTokenWhiteList } from '../../../utils/ref-finance';
+import { FARMING_VALIDATOR_VERSION } from '../../../utils/constants';
 import FormButton from '../../common/FormButton';
 import SafeTranslate from '../../SafeTranslate';
 import AlertBanner from './AlertBanner';
 import BalanceBox from './BalanceBox';
+import ClaimConfirmModal from './ClaimConfirmModal';
+import FarmingBalanceBox from './FarmingBalanceBox';
 import StakeConfirmModal from './StakeConfirmModal';
 import StakingFee, { StakingAPY } from './StakingFee';
 
@@ -24,9 +26,15 @@ export default function Validator({
     accountId,
 }) {
     const [confirm, setConfirm] = useState(null);
+    const currentValidator = useSelector(state => state.staking.currentValidator);
+    const isFarmingValidator = validator?.version === FARMING_VALIDATOR_VERSION;
+
     const dispatch = useDispatch();
     const stakeNotAllowed = !!selectedValidator && selectedValidator !== match.params.validator && !!currentValidators.length;
     const showConfirmModal = confirm === 'withdraw' || confirm === 'claimFarmRewards';
+
+    const [showClaimConfirmModal, setShowClaimConfirmModal] = useState(false);
+    const [selectedFarm, setSelectedFarm] = useState(null);
 
     const handleStakeAction = async () => {
         if (showConfirmModal && !loading) {
@@ -35,46 +43,18 @@ export default function Validator({
         }
     };
 
-    const [unclaimedRewards, setUnclaimReward] = useState([]);
+    const handleClaimAction = async () => {
+        console.log('CLAIMING ACTION');
+    };
 
     useEffect(() => {
-        if (validator?.version !== PROJECT_VALIDATOR_VERSION ) return;
-        const getRewards = async () => {
-            try {
-                const tokenWhiteList = await fetchTokenWhiteList(accountId) || [];
-                const tokenPrices = await fetchTokenPrices();
-                const rewards = await Promise.all(
-                    validator.poolSummary.farms.map(async (farm) => {
-                        const rewards =
-                            await validator.contract.get_unclaimed_reward({
-                                account_id: accountId,
-                                farm_id: farm.farm_id,
-                            });
+        if (!isFarmingValidator || !validator?.accountId ) return;
+        dispatch(selectCurrentValidator(validator.accountId, accountId));
 
-                        const tokenData = tokenPrices[farm.token_id] || { price: 0, symbol: ''};
-                        return {
-                            amount: rewards,
-                            tokenPrice: (+tokenData.price).toFixed(2) || 0,
-                            tokenId: farm.token_id,
-                            tokenName: tokenData.symbol,
-                            isWhiteListed: !tokenWhiteList.includes(farm.token_id),
-                            farmTitle: farm.name,
-                            farmId: farm.farm_id
-                        };
-                    })
-                );
-
-                setUnclaimReward(rewards);
-            } catch (error) {
-                console.log(error);
-            }
+        return () => {
+            dispatch(clearCurrentValidator());
         };
-
-        getRewards();
-    }, [validator]);
-
-    const isProjectValidator = validator?.version === PROJECT_VALIDATOR_VERSION;
-    const calculatedAPY = validator?.calculatedAPY;
+    }, [validator?.accountId, isFarmingValidator]);
 
     return (
         <>
@@ -101,7 +81,7 @@ export default function Validator({
                 <Translate id='staking.validator.button' />
             </FormButton>
             {validator && <StakingFee fee={validator.fee.percentage} />}
-            {validator?.version === PROJECT_VALIDATOR_VERSION && <StakingAPY apy={calculatedAPY} />}
+            {isFarmingValidator && <StakingAPY apy={currentValidator.calculatedAPY} />}
             {validator && !stakeNotAllowed && !actionsPending('UPDATE_STAKING') &&
                 <>
                     <BalanceBox
@@ -138,28 +118,28 @@ export default function Validator({
                         button='staking.balanceBox.available.button'
                         loading={loading}
                     />
-                    {isProjectValidator && (
+                    {currentValidator?.accountId && isFarmingValidator && (
                             <>
                             <h3>
                                 <Translate
                                     id="staking.validator.availableForClaim"
                                 />
                             </h3>
-                            {unclaimedRewards.length ? unclaimedRewards?.map(farmRewards => (
-                                <BalanceBox
-                                    key={farmRewards.farmId}
+                            {currentValidator.farmRewards.length ? currentValidator.farmRewards?.map(farmReward => (
+                                <FarmingBalanceBox
+                                    key={farmReward.farmId}
                                     info="staking.balanceBox.farmAvailable.info"
-                                    amount={farmRewards.amount || '0'}
+                                    amount={farmReward.amount || '0'}
                                     tokenMeta={{
-                                        tokenPrice: farmRewards.tokenPrice,
-                                        tokenId: farmRewards.tokenId,
-                                        tokenName: farmRewards.tokenName,
-                                        isWhiteListed: farmRewards.isWhiteListed,
-                                        farmTitle: farmRewards.farmTitle
+                                        tokenPrice: farmReward.tokenPrice,
+                                        tokenId: farmReward.tokenId,
+                                        tokenName: farmReward.tokenName,
+                                        isWhiteListed: farmReward.isWhiteListed,
+                                        farmTitle: farmReward.farmTitle
                                     }}
-                                    isNear={false}
                                     onClick={() => {
-                                        // setConfirm("claimFarmRewards");
+                                        setSelectedFarm(farmReward);
+                                        setShowClaimConfirmModal(true);
                                         // // Mixpanel.track(
                                         // //     "CLAIM Click claim button"
                                         // // );
@@ -168,6 +148,25 @@ export default function Validator({
                                     loading={loading}
                                 />
                             )) : <h4><Translate id={'staking.validator.nothingToClaim'}/></h4>}
+                            {showClaimConfirmModal && <ClaimConfirmModal
+                                title={`staking.validator.claimFarmRewards`}
+                                label="staking.stake.from"
+                                validator={currentValidator}
+                                amount={selectedFarm.amount}
+                                open={showClaimConfirmModal}
+                                onConfirm={handleClaimAction}
+                                onClose={() => setShowClaimConfirmModal(false)}
+                                loading={loading}
+                                tokenMeta={{
+                                    tokenPrice: selectedFarm.tokenPrice,
+                                    tokenId: selectedFarm.tokenId,
+                                    tokenName: selectedFarm.tokenName,
+                                    isWhiteListed: selectedFarm.isWhiteListed,
+                                    farmTitle: selectedFarm.farmTitle
+                                }}
+                                // sendingString="claiming"
+                            />
+}
                             </>
                         )}
                         {showConfirmModal && (

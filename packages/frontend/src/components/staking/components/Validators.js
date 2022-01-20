@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Translate } from 'react-localize-redux';
 
-import { getProjectValidatorPrefix } from '../../../utils/constants';
+import { getFarmingValidatorPrefix } from '../../../utils/constants';
 import { MAINNET, TESTNET } from '../../../utils/constants';
 import { wallet } from '../../../utils/wallet';
 import ListWrapper from './ListWrapper';
@@ -11,7 +11,7 @@ import ValidatorBox from './ValidatorBox';
 export default function Validators({ validators, stakeFromAccount }) {
     const [validator, setValidator] = useState('');
     const networkId = wallet.connection.provider.connection.url.indexOf(MAINNET) > -1 ? MAINNET : TESTNET;
-    const validatorPrefix = getProjectValidatorPrefix(networkId);
+    const validatorPrefix = getFarmingValidatorPrefix(networkId);
     const validValidator = validators.map(validator => validator.accountId).includes(validator);
 
     const filterValidators = useMemo(() =>

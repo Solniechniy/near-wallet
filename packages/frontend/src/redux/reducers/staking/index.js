@@ -21,7 +21,8 @@ const initialState = {
     allValidators: [],
     accounts: [],
     isLockup: false,
-    currentAccount: { ...ACCOUNT_DEFAULTS }
+    currentAccount: { ...ACCOUNT_DEFAULTS },
+    currentValidator: {},
 };
 
 const stakingHandlers = handleActions({
@@ -69,12 +70,26 @@ const stakingHandlers = handleActions({
                 ...state,
                 lockup: payload
             }),
-    [staking.getValidators]: (state, { ready, error, payload }) => 
+    [staking.getValidators]: (state, { ready, error, payload }) =>
         (!ready || error)
             ? state
             : ({
                 ...state,
                 allValidators: payload
+            }),
+    [staking.setCurrentValidator]: (state, { ready, error, payload}) =>
+        (!ready || error)
+            ? state
+            : ({
+                ...state,
+                currentValidator: payload
+            }),
+    [staking.clearCurrentValidator]: (state, { ready, error }) =>
+        (!ready || error)
+            ? state
+            : ({
+                ...state,
+                currentValidator: {}
             }),
     [clearAccountState]: () => initialState
 }, initialState);
